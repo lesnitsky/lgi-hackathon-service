@@ -1,7 +1,6 @@
 import Koa from 'koa';
 import route from 'koa-route';
 import Twitter from 'twitter';
-import TwitterPinAuth from 'twitter-pin-auth';
 
 import serveStatic from 'koa-static';
 
@@ -11,16 +10,27 @@ const access_token_key = process.env.HN_ACCESS_TOKEN;
 const access_token_secret = process.env.HN_ACCESS_TOKEN_SECRET;
 
 import { server as WebSocketServer } from 'websocket';
+import { OAuth } from 'oauth';
+import qr from 'qr-image';
 
+import session from 'koa-session';
+import convert from 'koa-convert';
 
 const client = new Twitter({ consumer_key, consumer_secret, access_token_key, access_token_secret });
-
 const app = new Koa();
+app.use(convert(session(app)));
 
 app.use(serveStatic(process.cwd() + '/public'));
 
 app.use(async (ctx, next) => {
 	ctx.set('Access-Control-Allow-Origin', '*');
+	await next();
+})
+
+app.use(async (ctx, next) => {
+	console.log(ctx.cookies.get('oauth_token'));
+	console.log(ctx.cookies.get('oauth_secret'));
+
 	await next();
 })
 
@@ -48,6 +58,39 @@ app.use(route.get('/tweets', async (ctx, next) => {
 	});
 
 	ctx.body = tweets;
+}));
+
+app.use(route.get('/auth-url-qr.png', async (ctx, next) => {
+	const REQUEST_TOKEN_URL = 'https://api.twitter.com/oauth/request_token';
+	const ACCESS_TOKEN_URL = 'https://api.twitter.com/oauth/access_token';
+	const OAUTH_VERSION = '1.0';
+	const HASH_VERSION = 'HMAC-SHA1';
+	const oa = new OAuth(REQUEST_TOKEN_URL, ACCESS_TOKEN_URL, consumer_key, consumer_secret, OAUTH_VERSION, 'oob', HASH_VERSION);
+
+	const { oauth_token, oauth_token_secret } = await new Promise((resolve, reject) => {
+		oa.getOAuthRequestToken(function (error, oauth_token, oauth_token_secret, results) {
+			if (error) {
+				return reject(error)
+			}
+
+			resolve({
+				oauth_token,
+				oauth_token_secret,
+			});
+		});
+	});
+
+	const qrPNG = qr.imageSync(`https://api.twitter.com/oauth/authorize?oauth_token=${oauth_token}`, { type: 'png' });
+
+	ctx.cookies.set('oauth_token', oauth_token);
+	ctx.cookies.set('oauth_secret', oauth_token_secret);
+
+	ctx.type = 'image/png';
+	ctx.body = qrPNG;
+}));
+
+app.use(route.post('/oauth-pin', async (ctx, next) => {
+
 }))
 
 const server = app.listen(9889);
