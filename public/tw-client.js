@@ -8,3 +8,20 @@ ws.onmessage = function onmessage(msg) {
 ws.onclose = function onclose() {
 	console.log('Connection closed');
 }
+
+const button = document.querySelector('button');
+const pinInput = document.querySelector('input');
+
+button.addEventListener('click', e => {
+	const pin = pinInput.value;
+
+	const headers = new Headers();
+	headers.append('Content-Type', 'application/json');
+
+	fetch('/oauth-pin', {
+		method: 'POST',
+		headers: headers,
+		body: JSON.stringify({ pin }),
+		credentials: 'include',
+	});
+});

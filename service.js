@@ -15,10 +15,19 @@ import qr from 'qr-image';
 
 import session from 'koa-session';
 import convert from 'koa-convert';
+import bodyParser from 'koa-bodyparser';
 
 const client = new Twitter({ consumer_key, consumer_secret, access_token_key, access_token_secret });
+
+const REQUEST_TOKEN_URL = 'https://api.twitter.com/oauth/request_token';
+const ACCESS_TOKEN_URL = 'https://api.twitter.com/oauth/access_token';
+const OAUTH_VERSION = '1.0';
+const HASH_VERSION = 'HMAC-SHA1';
+const oa = new OAuth(REQUEST_TOKEN_URL, ACCESS_TOKEN_URL, consumer_key, consumer_secret, OAUTH_VERSION, 'oob', HASH_VERSION);
+
 const app = new Koa();
 app.use(convert(session(app)));
+app.use(bodyParser());
 
 app.use(serveStatic(process.cwd() + '/public'));
 
@@ -61,12 +70,6 @@ app.use(route.get('/tweets', async (ctx, next) => {
 }));
 
 app.use(route.get('/auth-url-qr.png', async (ctx, next) => {
-	const REQUEST_TOKEN_URL = 'https://api.twitter.com/oauth/request_token';
-	const ACCESS_TOKEN_URL = 'https://api.twitter.com/oauth/access_token';
-	const OAUTH_VERSION = '1.0';
-	const HASH_VERSION = 'HMAC-SHA1';
-	const oa = new OAuth(REQUEST_TOKEN_URL, ACCESS_TOKEN_URL, consumer_key, consumer_secret, OAUTH_VERSION, 'oob', HASH_VERSION);
-
 	const { oauth_token, oauth_token_secret } = await new Promise((resolve, reject) => {
 		oa.getOAuthRequestToken(function (error, oauth_token, oauth_token_secret, results) {
 			if (error) {
@@ -90,8 +93,28 @@ app.use(route.get('/auth-url-qr.png', async (ctx, next) => {
 }));
 
 app.use(route.post('/oauth-pin', async (ctx, next) => {
+	const { pin } = ctx.request.body;
 
-}))
+	const oauth_token = ctx.cookies.get('oauth_token');
+	const oauth_token_secret = ctx.cookies.get('oauth_secret');
+
+	console.log(oauth_token, oauth_token_secret);
+
+	const { access_token, access_token_secret, profile } = await new Promise((resolve, reject) => {
+		oa.getOAuthAccessToken(oauth_token, oauth_token_secret, pin, function (error, access_token, access_token_secret, profile) {
+			if (error) {
+				return reject(new Error(error.data));
+			}
+
+			resolve({ access_token, access_token_secret, profile })
+		});
+	});
+
+	ctx.cookies.set('access_token', access_token);
+	ctx.cookies.set('access_token_secret', access_token_secret);
+
+	ctx.body = profile;
+}));
 
 const server = app.listen(9889);
 console.log('Starting');
