@@ -19,6 +19,11 @@ const app = new Koa();
 
 app.use(serveStatic(process.cwd() + '/public'));
 
+app.use(async (ctx, next) => {
+	ctx.set('Access-Control-Allow-Origin', '*');
+	await next();
+})
+
 app.use(route.get('/ping', ctx => {
 	ctx.body = 'Kek'
 }));
@@ -73,7 +78,7 @@ function connect(req) {
 	Connections.add(connection);
 
 	connection.on('close', () => {
-		Connections.remove(connection);
+		Connections.delete(connection);
 	});
 
 	const newHashtags = hashtags.filter(hashtag => !trackedHashtags.has(hashtag));
