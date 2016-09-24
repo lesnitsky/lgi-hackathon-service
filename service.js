@@ -19,19 +19,34 @@ const app = new Koa();
 
 app.use(serveStatic(process.cwd() + '/public'));
 
-app.use(async (ctx, next) => {
-	console.log(ctx.request.method, ctx.request.url);
-	next();
-})
-
 app.use(route.get('/ping', ctx => {
 	ctx.body = 'Kek'
 }));
 
+app.use(route.get('/tweets', async (ctx, next) => {
+	const { hashtags } = ctx.request.query;
+
+	if (!hashtags) {
+		ctx.status = 400;
+		ctx.body = 'Missing "hashtags" param';
+		return;
+	}
+
+	const tweets = await new Promise((resolve, reject) => {
+		client.get('search/tweets', { q: hashtags.split(',').map(toHashTag).join(',') }, function (error, tweets, response) {
+			if (error) {
+				return reject(error);
+			}
+
+			resolve(tweets.statuses);
+		})
+	});
+
+	ctx.body = tweets;
+}))
+
 const server = app.listen(9889);
 console.log('Starting');
-
-
 
 const wsServer = new WebSocketServer({
     httpServer: server,
@@ -47,7 +62,7 @@ wsServer.on('request', (req) => {
 		req.reject();
 	}
 
-	// connect(req);
+	connect(req);
 })
 
 function connect(req) {
@@ -74,7 +89,7 @@ function connect(req) {
 
 	newHashtags.forEach(tag => trackedHashtags.add(tag));
 
-	const streamTrack = Array.from(trackedHashtags.keys()).map(tagText => `#${tagText}`).join(',');
+	const streamTrack = Array.from(trackedHashtags.keys()).map(toHashTag).join(',');
 
 	console.log(trackedHashtags);
 	console.log(streamTrack);
@@ -104,4 +119,8 @@ function containsHashtag(event, hashtag) {
 	} catch (err) {
 		return false;
 	}
+}
+
+function toHashTag(tagText) {
+	return `#${tagText}`
 }
