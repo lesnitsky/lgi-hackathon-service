@@ -83,10 +83,12 @@ app.use(route.get('/auth-url-qr.png', async (ctx, next) => {
 		});
 	});
 
-	const qrPNG = qr.imageSync(`https://api.twitter.com/oauth/authorize?oauth_token=${oauth_token}`, { type: 'png' });
+	const authUrl = `https://api.twitter.com/oauth/authorize?oauth_token=${oauth_token}&force_login=true`;
+	const qrPNG = qr.imageSync(authUrl, { type: 'png' });
 
 	ctx.cookies.set('oauth_token', oauth_token);
 	ctx.cookies.set('oauth_secret', oauth_token_secret);
+	ctx.set('X-Auth-Url', authUrl);
 
 	ctx.type = 'image/png';
 	ctx.body = qrPNG;
