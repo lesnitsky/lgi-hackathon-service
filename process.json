@@ -1,0 +1,5 @@
+{
+	"name": "tw-service",
+	"script": "./bootstrap.js",
+	"watch": true
+}
