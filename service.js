@@ -17,6 +17,8 @@ import session from 'koa-session';
 import convert from 'koa-convert';
 import bodyParser from 'koa-bodyparser';
 
+import cors from 'kcors';
+
 const client = new Twitter({ consumer_key, consumer_secret, access_token_key, access_token_secret });
 
 const REQUEST_TOKEN_URL = 'https://api.twitter.com/oauth/request_token';
@@ -28,18 +30,12 @@ const oa = new OAuth(REQUEST_TOKEN_URL, ACCESS_TOKEN_URL, consumer_key, consumer
 const app = new Koa();
 app.use(convert(session(app)));
 app.use(bodyParser());
+app.use(cors());
 
 app.use(serveStatic(process.cwd() + '/public'));
 
 app.use(async (ctx, next) => {
 	ctx.set('Access-Control-Allow-Origin', '*');
-	await next();
-})
-
-app.use(async (ctx, next) => {
-	console.log(ctx.cookies.get('oauth_token'));
-	console.log(ctx.cookies.get('oauth_secret'));
-
 	await next();
 })
 
@@ -69,7 +65,7 @@ app.use(route.get('/tweets', async (ctx, next) => {
 	ctx.body = tweets;
 }));
 
-app.use(route.get('/auth-url-qr.png', async (ctx, next) => {
+app.use(route.get('/oauth-keys', async (ctx, next) => {
 	const { oauth_token, oauth_token_secret } = await new Promise((resolve, reject) => {
 		oa.getOAuthRequestToken(function (error, oauth_token, oauth_token_secret, results) {
 			if (error) {
@@ -83,11 +79,18 @@ app.use(route.get('/auth-url-qr.png', async (ctx, next) => {
 		});
 	});
 
+	ctx.body = {
+		oauth_token,
+		oauth_token_secret
+	}
+}));
+
+app.use(route.get('/auth-url-qr.png', async (ctx, next) => {
+	const { oauth_token } = ctx.request.query;
+
 	const authUrl = `https://api.twitter.com/oauth/authorize?oauth_token=${oauth_token}&force_login=true`;
 	const qrPNG = qr.imageSync(authUrl, { type: 'png' });
 
-	ctx.cookies.set('oauth_token', oauth_token);
-	ctx.cookies.set('oauth_secret', oauth_token_secret);
 	ctx.set('X-Auth-Url', authUrl);
 
 	ctx.type = 'image/png';
@@ -95,12 +98,7 @@ app.use(route.get('/auth-url-qr.png', async (ctx, next) => {
 }));
 
 app.use(route.post('/oauth-pin', async (ctx, next) => {
-	const { pin } = ctx.request.body;
-
-	const oauth_token = ctx.cookies.get('oauth_token');
-	const oauth_token_secret = ctx.cookies.get('oauth_secret');
-
-	console.log(oauth_token, oauth_token_secret);
+	const { pin, oauth_token, oauth_token_secret } = ctx.request.body;
 
 	const { access_token, access_token_secret, profile } = await new Promise((resolve, reject) => {
 		oa.getOAuthAccessToken(oauth_token, oauth_token_secret, pin, function (error, access_token, access_token_secret, profile) {
@@ -112,11 +110,84 @@ app.use(route.post('/oauth-pin', async (ctx, next) => {
 		});
 	});
 
-	ctx.cookies.set('access_token', access_token);
-	ctx.cookies.set('access_token_secret', access_token_secret);
-
-	ctx.body = profile;
+	ctx.body = {
+		profile,
+		access_token,
+		access_token_secret,
+	};
 }));
+
+app.use(route.post('/retweet', async (ctx, next) => {
+	const { id, access_token, access_token_secret } = ctx.request.body;
+	const access_token_key = access_token;
+
+	const client = new Twitter({ consumer_key, consumer_secret, access_token_key, access_token_secret });
+
+	ctx.body = await new Promise((resolve, reject) => {
+		client.post('statuses/retweet/' + id, (err, result, res) => {
+			if (err) {
+				console.log(result);
+				return reject(new Error(err.data));
+			}
+
+			resolve(result);
+		});
+	});
+}));
+
+app.use(route.delete('/retweet', async (ctx, next) => {
+	const { id, access_token, access_token_secret } = ctx.request.body;
+	const access_token_key = access_token;
+
+	const client = new Twitter({ consumer_key, consumer_secret, access_token_key, access_token_secret });
+
+	ctx.body = await new Promise((resolve, reject) => {
+		client.post('statuses/unretweet/' + id, (err, result, res) => {
+			if (err) {
+				console.log(result);
+				return reject(new Error(err.data));
+			}
+
+			resolve(result);
+		});
+	});
+}));
+
+app.use(route.post('/like', async (ctx, next) => {
+	const { id, access_token, access_token_secret } = ctx.request.body;
+	const access_token_key = access_token;
+
+	const client = new Twitter({ consumer_key, consumer_secret, access_token_key, access_token_secret });
+
+	ctx.body = await new Promise((resolve, reject) => {
+		client.post('favorites/create', { id }, (err, result, res) => {
+			if (err) {
+				console.log(result);
+				return reject(new Error(err.data));
+			}
+
+			resolve(result);
+		});
+	});
+}))
+
+app.use(route.delete('/like', async (ctx, next) => {
+	const { id, access_token, access_token_secret } = ctx.request.body;
+	const access_token_key = access_token;
+
+	const client = new Twitter({ consumer_key, consumer_secret, access_token_key, access_token_secret });
+
+	ctx.body = await new Promise((resolve, reject) => {
+		client.post('favorites/destroy', { id }, (err, result, res) => {
+			if (err) {
+				console.log(result);
+				return reject(new Error(err.data));
+			}
+
+			resolve(result);
+		});
+	});
+}))
 
 const server = app.listen(9889);
 console.log('Starting');
